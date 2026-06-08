@@ -1,4 +1,4 @@
-const { Events } = require('discord.js');
+const { ActivityType, Events } = require('discord.js');
 const path = require('node:path');
 
 const { refreshStatsMessage, weeklyResetRanking } = require('../utils/stats');
@@ -9,6 +9,16 @@ module.exports = {
   once: true,
   async execute(client) {
     client.logger.info('bot.ready', { user: client.user?.tag });
+    client.user.setPresence({
+      activities: [
+        {
+          name: 'Criado por Github/Mevzin',
+          type: ActivityType.Playing
+        }
+      ],
+      status: 'online'
+    });
+
     for (const guild of client.guilds.cache.values()) {
       client.db.ensureGuildDb(guild.id);
       await refreshStatsMessage({ client, guildId: guild.id }).catch(() => { });

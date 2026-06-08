@@ -1,0 +1,20 @@
+{
+	"name": "bot-farm",
+	"version": "1.0.0",
+	"private": true,
+	"type": "commonjs",
+	"main": "index.js",
+	"scripts": {
+		"start": "node index.js",
+		"dev": "nodemon index.js",
+		"deploy": "node scripts/deploy-commands.js",
+		"lint": "node scripts/self-check.js"
+	},
+	"dependencies": {
+		"discord.js": "^14.22.1",
+		"luxon": "^3.7.0"
+	},
+	"devDependencies": {
+		"nodemon": "^3.1.10"
+	}
+}

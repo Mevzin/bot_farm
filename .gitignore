@@ -1,0 +1,4 @@
+bot.json
+database/*
+logs/*
+node_modules

@@ -1,0 +1,8 @@
+{
+	"token": "",
+	"clientId": "",
+	"guildId": "",
+	"backupIntervalMinutes": 10,
+	"backupRetentionDays": 7,
+	"defaultCooldownSeconds": 3
+}

@@ -10,12 +10,10 @@ module.exports = {
   once: true,
   async execute(client) {
     client.logger.info('bot.ready', { user: client.user?.tag });
-    const isProd = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
-    const versionLabel = isProd ? version : `${version} - dev`;
     client.user.setPresence({
       activities: [
         {
-          name: `Criado por Github/Mevzin | Powered v${versionLabel}`,
+          name: `Powered by Github.com/mevzin | v${version}`,
           type: ActivityType.Playing
         }
       ],

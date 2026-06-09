@@ -80,7 +80,7 @@ function infoEmbed({ title, description, user, fields, thumbnailUrl, imageUrl } 
   });
 }
 
-function logEmbed({ title, description, user, fields, imageUrl, status, accent } = {}) {
+function logEmbed({ title, description, user, fields, imageUrl, status, accent, includeStamp = true } = {}) {
   const statusIcon =
     status === 'success'
       ? EMOJIS.success
@@ -104,7 +104,7 @@ function logEmbed({ title, description, user, fields, imageUrl, status, accent }
   const stamp = DateTime.local().toFormat('dd/LL/yyyy HH:mm:ss');
   const fullFields = [
     ...(Array.isArray(fields) ? fields : []),
-    { name: '🕒 Data/Hora', value: stamp, inline: true }
+    ...(includeStamp ? [{ name: '🕒 Data/Hora', value: stamp, inline: true }] : [])
   ];
 
   return makeBase({
@@ -125,4 +125,3 @@ module.exports = {
   infoEmbed,
   logEmbed
 };
-

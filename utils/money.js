@@ -1,15 +1,24 @@
 const { ensureUserStats, refreshStatsMessage } = require('./stats');
 const { sendGuildLog } = require('./audit');
+const { DateTime } = require('luxon');
+const { getWashPercentage } = require('./financeSettings');
+
+function money(n) {
+  return Number(n ?? 0).toLocaleString('pt-BR');
+}
 
 function computeSignature({ userId, dirtyAdded }) {
   return JSON.stringify({ userId, dirtyAdded });
 }
 
 async function commitDirtyMoney({ client, guildId, user, dirtyAdded, imageUrl }) {
-  const cleanAdded = Math.floor(dirtyAdded * 0.75);
+  const dbBefore = client.db.readGuildDb(guildId);
+  const washPercentage = getWashPercentage(dbBefore);
+  const cleanAdded = Math.floor((dirtyAdded * washPercentage) / 100);
   const signature = computeSignature({ userId: user.id, dirtyAdded });
 
   let totals = null;
+  let createdAt = '';
 
   await client.db.updateGuildDb(guildId, (db) => {
     const recent = (db.dirtyMoney?.records ?? []).slice(-30);
@@ -39,45 +48,35 @@ async function commitDirtyMoney({ client, guildId, user, dirtyAdded, imageUrl })
     };
     db.dirtyMoney.records.push(record);
     totals = { ...db.dirtyMoney.byUserId[user.id] };
+    createdAt = record.createdAt;
   });
 
-  await refreshStatsMessage({ client, guildId }).catch(() => {});
+  await refreshStatsMessage({ client, guildId }).catch(() => { });
+
+  const stamp = DateTime.fromISO(createdAt || new Date().toISOString());
+  const fields = [
+    { name: '👤 Usuário', value: `<@${user.id}>`, inline: true },
+    { name: '💰 Valor registrado', value: `$${money(dirtyAdded)}`, inline: true },
+    { name: '🖼️ Imagem enviada', value: imageUrl ? `[Abrir imagem](${imageUrl})` : 'Não informada', inline: false },
+    { name: '📅 Data', value: stamp.toFormat('dd/LL/yyyy'), inline: true },
+    { name: '⏰ Hora', value: stamp.toFormat('HH:mm:ss'), inline: true }
+  ];
 
   await sendGuildLog({
     client,
     guildId,
     title: 'Dinheiro sujo registrado',
     user,
-    fields: [
-      { name: 'Valor adicionado (sujo)', value: `**${dirtyAdded.toLocaleString('pt-BR')}**`, inline: true },
-      { name: 'Valor após lavagem (limpo)', value: `**${Math.floor(dirtyAdded * 0.75).toLocaleString('pt-BR')}**`, inline: true },
-      { name: 'Total (sujo)', value: `**${totals.dirtyTotal.toLocaleString('pt-BR')}**`, inline: true },
-      { name: 'Total (limpo)', value: `**${totals.cleanTotal.toLocaleString('pt-BR')}**`, inline: true }
-    ],
-    imageUrl: imageUrl || undefined
+    fields,
+    imageUrl: imageUrl || undefined,
+    channelId: dbBefore?.config?.financeChannelId || dbBefore?.config?.farmLogChannelId || dbBefore?.config?.logChannelId,
+    includeStamp: false
   });
 
-  const cfg = client.db.readGuildDb(guildId)?.config ?? {};
-  if (cfg.farmLogChannelId && cfg.farmLogChannelId !== cfg.logChannelId) {
-    await sendGuildLog({
-      client,
-      guildId,
-      channelId: cfg.farmLogChannelId,
-      title: 'Log Farm - Dinheiro sujo registrado',
-      user,
-      fields: [
-        { name: 'Valor adicionado (sujo)', value: `**${dirtyAdded.toLocaleString('pt-BR')}**`, inline: true },
-        { name: 'Valor após lavagem (limpo)', value: `**${Math.floor(dirtyAdded * 0.75).toLocaleString('pt-BR')}**`, inline: true },
-        { name: 'Total (sujo)', value: `**${totals.dirtyTotal.toLocaleString('pt-BR')}**`, inline: true },
-        { name: 'Total (limpo)', value: `**${totals.cleanTotal.toLocaleString('pt-BR')}**`, inline: true }
-      ],
-      imageUrl: imageUrl || undefined
-    });
-  }
-
-  return { cleanAdded, totals };
+  return { cleanAdded, totals, washPercentage, createdAt };
 }
 
 module.exports = {
-  commitDirtyMoney
+  commitDirtyMoney,
+  getWashPercentage
 };

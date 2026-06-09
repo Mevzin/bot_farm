@@ -6,13 +6,16 @@ const { ensureDir } = require('./fs');
 const { refreshStatsMessage } = require('./stats');
 const { sendGuildLog } = require('./audit');
 const { EMOJIS } = require('./constants');
+const { getWashPercentage } = require('./financeSettings');
 
 function money(n) {
   return Number(n ?? 0).toLocaleString('pt-BR');
 }
 
 async function commitWash({ client, baseDir, guildId, userId, adminUser, dirtyAmount }) {
-  const cleanAmount = Math.floor(Number(dirtyAmount) * 0.75);
+  const dbBefore = client.db.readGuildDb(guildId);
+  const washPercentage = getWashPercentage(dbBefore);
+  const cleanAmount = Math.floor((Number(dirtyAmount) * washPercentage) / 100);
   const stamp = DateTime.local();
   const washId = `wash_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
 
@@ -78,7 +81,7 @@ async function commitWash({ client, baseDir, guildId, userId, adminUser, dirtyAm
         )
       );
 
-      await refreshStatsMessage({ client, guildId }).catch(() => {});
+      await refreshStatsMessage({ client, guildId }).catch(() => { });
       await sendGuildLog({
         client,
         guildId,
@@ -88,6 +91,7 @@ async function commitWash({ client, baseDir, guildId, userId, adminUser, dirtyAm
         fields: [
           { name: '👤 Usuário', value: `<@${userId}>`, inline: true },
           { name: `${EMOJIS.wash} Valor lavado`, value: `$${money(dirtyAmount)}`, inline: true },
+          { name: '📊 Percentual', value: `${washPercentage}%`, inline: true },
           { name: '💰 Saldo restante', value: `$${money(remainingDirty)}`, inline: true },
           { name: '💵 Total limpo acumulado', value: `$${money(totalClean)}`, inline: true },
           { name: '👮 Responsável', value: `<@${adminUser?.id ?? ''}>`, inline: true }
@@ -102,4 +106,3 @@ async function commitWash({ client, baseDir, guildId, userId, adminUser, dirtyAm
 module.exports = {
   commitWash
 };
-

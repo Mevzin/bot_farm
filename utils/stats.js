@@ -4,6 +4,7 @@ const { DateTime } = require('luxon');
 
 const { infoEmbed } = require('./embedBuilder');
 const { ensureDir } = require('./fs');
+const { getWashPercentage } = require('./financeSettings');
 
 function formatMoney(n) {
   const v = Number(n ?? 0);
@@ -25,10 +26,11 @@ function ensureUserStats(db, userId) {
 
 function renderStatsEmbed(db) {
   const totals = db?.dirtyMoney?.byUserId ?? {};
+  const washPercentage = getWashPercentage(db);
   const entries = Object.entries(totals).map(([userId, v]) => ({
     userId,
     dirty: Number(v?.dirtyTotal ?? 0),
-    clean: Math.floor(Number(v?.dirtyTotal ?? 0) * 0.75)
+    clean: Math.floor((Number(v?.dirtyTotal ?? 0) * washPercentage) / 100)
   }));
 
   entries.sort((a, b) => b.dirty - a.dirty);
@@ -53,6 +55,7 @@ function renderStatsEmbed(db) {
 
 async function refreshStatsMessage({ client, guildId }) {
   const db = client.db.readGuildDb(guildId);
+  if (db?.config?.rankingEnabled === false) return;
   const rankingChannelId = db?.config?.rankingChannelId;
   if (!rankingChannelId) return;
 
@@ -113,7 +116,7 @@ async function weeklyResetRanking({ client, baseDir, guildId }) {
     db2.config.lastWeeklyResetAt = now.toISO();
   });
 
-  await refreshStatsMessage({ client, guildId }).catch(() => {});
+  await refreshStatsMessage({ client, guildId }).catch(() => { });
 }
 
 module.exports = {

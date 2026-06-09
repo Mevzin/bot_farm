@@ -11,7 +11,14 @@ module.exports = {
     try {
       if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
-        if (!command) return;
+        if (!command) {
+          client.logger.warn('command.missing', { name: interaction.commandName });
+          await safeReply(interaction, {
+            ephemeral: true,
+            content: 'Este comando foi atualizado, mas o bot ainda não reiniciou. Reinicie o bot e tente novamente.'
+          }).catch(() => {});
+          return;
+        }
         await command.execute(interaction, { client, safeReply });
         return;
       }
@@ -24,7 +31,14 @@ module.exports = {
         const rawId = interaction.customId || '';
         const prefix = rawId.split(':')[0];
         const handler = client.components.get(prefix);
-        if (!handler) return;
+        if (!handler) {
+          client.logger.warn('component.missing', { prefix, customId: interaction.customId });
+          await safeReply(interaction, {
+            ephemeral: true,
+            content: 'Esta ação foi atualizada, mas o bot ainda não reiniciou. Reinicie o bot e tente novamente.'
+          }).catch(() => {});
+          return;
+        }
         await handler.execute(interaction, { client, safeReply });
       }
     } catch (err) {
@@ -42,4 +56,3 @@ module.exports = {
     }
   }
 };
-

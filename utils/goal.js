@@ -41,7 +41,8 @@ function renderGoalEmbed(goal) {
 
 async function ensureGoalMessage({ client, guildId }) {
   const db = client.db.readGuildDb(guildId);
-  const channelId = db?.config?.goalChannelId || '';
+  if (db?.config?.metaEnabled === false) return null;
+  const channelId = db?.config?.financeChannelId || db?.config?.goalChannelId || '';
   if (!channelId) return null;
 
   const channel = await client.channels.fetch(channelId).catch(() => null);

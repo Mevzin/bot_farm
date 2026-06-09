@@ -1,46 +1,16 @@
 const { createSession } = require('../utils/sessions');
 const { parsePositiveInt } = require('../utils/validate');
 const { commitDirtyMoney } = require('../utils/money');
+const { getWashPercentage } = require('../utils/financeSettings');
 const { infoEmbed, successEmbed } = require('../utils/embedBuilder');
-const { createCustomId } = require('../utils/customId');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { buildDonatePromptEmbed, buildDonateButtons, buildDonateButtonsRow2 } = require('./goal');
 
 function resolvePrintChannelId(db, fallbackChannelId) {
-  return db?.config?.proofChannelId || db?.config?.registryChannelId || fallbackChannelId || '';
+  return db?.config?.proofChannelId || db?.config?.financeChannelId || db?.config?.registryChannelId || fallbackChannelId || '';
 }
 
 function money(n) {
   return Number(n ?? 0).toLocaleString('pt-BR');
-}
-
-function donateRows({ guildId, userId }) {
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(createCustomId({ prefix: 'goal', action: 'donate10', guildId, userId }))
-      .setLabel('Doar 10%')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(createCustomId({ prefix: 'goal', action: 'donate25', guildId, userId }))
-      .setLabel('Doar 25%')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(createCustomId({ prefix: 'goal', action: 'donate50', guildId, userId }))
-      .setLabel('Doar 50%')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(createCustomId({ prefix: 'goal', action: 'custom', guildId, userId }))
-      .setLabel('Personalizado')
-      .setStyle(ButtonStyle.Secondary)
-  );
-
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(createCustomId({ prefix: 'goal', action: 'cancel', guildId, userId }))
-      .setLabel('Cancelar')
-      .setStyle(ButtonStyle.Danger)
-  );
-
-  return [row1, row2];
 }
 
 module.exports = {
@@ -55,7 +25,8 @@ module.exports = {
       return safeReply(interaction, { ephemeral: true, content: 'Valor inválido. Use apenas números positivos.' });
     }
 
-    const cleanAdded = Math.floor(dirtyAdded * 0.75);
+    const washPercentage = getWashPercentage(db);
+    const cleanAdded = Math.floor((dirtyAdded * washPercentage) / 100);
     const printChannelId = resolvePrintChannelId(db, interaction.channelId);
 
     createSession({
@@ -77,24 +48,30 @@ module.exports = {
           });
           const guildDb = client.db.readGuildDb(message.guild.id);
           if (guildDb?.config?.dmEnabled) {
+            const currentWash = getWashPercentage(guildDb);
             const dmEmbed = infoEmbed({
               title: 'Saldo atualizado',
               description:
                 `Total sujo atual: **$${money(result.totals?.dirtyTotal ?? 0)}**\n` +
-                `Previsão limpa atual (75%): **$${money(Math.floor(Number(result.totals?.dirtyTotal ?? 0) * 0.75))}**`
+                `Previsão limpa atual (${currentWash}%): **$${money(Math.floor((Number(result.totals?.dirtyTotal ?? 0) * currentWash) / 100))}**`
             });
             await message.author.send({ embeds: [dmEmbed] }).catch(() => { });
           }
           const goal = guildDb.goal;
-          const canOfferDonate = Number(goal?.target ?? 0) > 0 && Number(goal?.current ?? 0) < Number(goal?.target ?? 0);
+          const canOfferDonate =
+            guildDb?.config?.donationEnabled !== false &&
+            guildDb?.config?.metaEnabled !== false &&
+            Number(goal?.target ?? 0) > 0 &&
+            Number(goal?.current ?? 0) < Number(goal?.target ?? 0);
+          const currentWash = getWashPercentage(guildDb);
 
           const registeredEmbed = successEmbed({
             title: 'Dinheiro sujo registrado',
             description:
               `Sujo: **$${money(dirtyAdded)}**\n` +
-              `Limpo (75%): **$${money(result.cleanAdded)}**\n` +
+              `Limpo (${currentWash}%): **$${money(result.cleanAdded)}**\n` +
               `Total sujo: **$${money(result.totals?.dirtyTotal ?? 0)}**\n` +
-              `Previsão limpa atual: **$${money(Math.floor(Number(result.totals?.dirtyTotal ?? 0) * 0.75))}**`
+              `Previsão limpa atual: **$${money(Math.floor((Number(result.totals?.dirtyTotal ?? 0) * currentWash) / 100))}**`
           });
 
           if (!canOfferDonate) {
@@ -102,18 +79,14 @@ module.exports = {
             return;
           }
 
-          const missing = Math.max(0, Number(goal.target) - Number(goal.current));
-          const pct = goal.target ? Math.min(100, Math.floor((Number(goal.current) / Number(goal.target)) * 100)) : 0;
-          const prompt = infoEmbed({
-            title: 'Deseja contribuir para a facção?',
-            description:
-              `Saldo atual: **$${money(result.totals?.dirtyTotal ?? 0)}**\n` +
-              `Meta: **$${money(goal.target)}** | Falta: **$${money(missing)}** | Concluída: **${pct}%**`
-          });
+          const prompt = buildDonatePromptEmbed({ db: guildDb, userId: message.author.id, baseAmount: dirtyAdded });
 
           await message.reply({
             embeds: [registeredEmbed, prompt],
-            components: donateRows({ guildId: message.guild.id, userId: message.author.id })
+            components: [
+              buildDonateButtons({ guildId: message.guild.id, userId: message.author.id, baseAmount: dirtyAdded }),
+              buildDonateButtonsRow2({ guildId: message.guild.id, userId: message.author.id, baseAmount: dirtyAdded })
+            ]
           });
         } catch (err) {
           await message.reply({ content: '❌ Falha ao registrar. Tente novamente.' });
@@ -130,7 +103,7 @@ module.exports = {
       ephemeral: true,
       content:
         `Valor informado: **${dirtyAdded.toLocaleString('pt-BR')}**\n` +
-        `Lavagem automática (75%): **${cleanAdded.toLocaleString('pt-BR')}**\n\n` +
+        `Lavagem automática (${washPercentage}%): **${cleanAdded.toLocaleString('pt-BR')}**\n\n` +
         `Print obrigatória.\n${channelText}`
     });
   }

@@ -39,6 +39,12 @@ module.exports = {
     };
 
     const db = client.db.readGuildDb(interaction.guildId);
+    if (db?.config?.registrationEnabled === false) {
+      return safeReply(interaction, {
+        ephemeral: true,
+        embeds: [errorEmbed({ description: 'O sistema de registro está desativado no momento.' })]
+      });
+    }
     const channelId = db?.config?.registrationChannelId || '';
     if (!channelId) {
       return safeReply(interaction, {

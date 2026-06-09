@@ -84,9 +84,9 @@ async function commitChestMovement({ client, guildId, mode, user, items, imageUr
 
   if (mode === 'deposit') {
     try {
-      const registryChannelId = dbAfter?.config?.registryChannelId || '';
-      if (registryChannelId) {
-        const channel = await client.channels.fetch(registryChannelId).catch(() => null);
+      const chestChannelId = dbAfter?.config?.chestChannelId || dbAfter?.config?.registryChannelId || '';
+      if (chestChannelId) {
+        const channel = await client.channels.fetch(chestChannelId).catch(() => null);
         if (channel && channel.isTextBased()) {
           const embed = new EmbedBuilder()
             .setTitle('Depósito no Baú')
@@ -99,7 +99,7 @@ async function commitChestMovement({ client, guildId, mode, user, items, imageUr
         }
       }
     } catch (err) {
-      client.logger.warn('chest.registry.failed', { guildId, message: err?.message });
+      client.logger.warn('chest.channel.failed', { guildId, message: err?.message });
     }
   }
 

@@ -86,7 +86,7 @@ module.exports = {
         await interaction.deferUpdate();
         await ensureGoalMessage({ client, guildId: interaction.guildId }).catch(() => {});
         const db2 = client.db.readGuildDb(interaction.guildId);
-        await interaction.message.edit({ embeds: [renderMetaEmbed(db2)], components: [panelRow()], content: 'Atualizado.' });
+        await interaction.editReply({ embeds: [renderMetaEmbed(db2)], components: [panelRow()], content: 'Atualizado.' });
         return;
       }
 
@@ -108,7 +108,7 @@ module.exports = {
           accent: 'warning'
         });
         const db2 = client.db.readGuildDb(interaction.guildId);
-        await interaction.message.edit({ embeds: [renderMetaEmbed(db2)], components: [panelRow()], content: 'Meta zerada.' });
+        await interaction.editReply({ embeds: [renderMetaEmbed(db2)], components: [panelRow()], content: 'Meta zerada.' });
         return;
       }
     }
@@ -131,7 +131,7 @@ module.exports = {
       });
 
       const db2 = client.db.readGuildDb(interaction.guildId);
-      await interaction.message.edit({ embeds: [renderMetaEmbed(db2)], components: [panelRow()], content: 'Salvo.' });
+      await interaction.editReply({ embeds: [renderMetaEmbed(db2)], components: [panelRow()], content: 'Salvo.' });
       return;
     }
 
@@ -141,37 +141,42 @@ module.exports = {
       if (mode !== 'config') return;
 
       await interaction.deferReply({ ephemeral: true });
-      const campaignName = interaction.fields.getTextInputValue('campaignName').trim();
-      const target = parsePositiveInt(interaction.fields.getTextInputValue('target'));
-      if (!target) {
-        await interaction.editReply({ content: 'Valor objetivo inválido. Use apenas números positivos.' });
+      try {
+        const campaignName = interaction.fields.getTextInputValue('campaignName').trim();
+        const target = parsePositiveInt(interaction.fields.getTextInputValue('target'));
+        if (!target) {
+          await interaction.editReply({ content: 'Valor objetivo inválido. Use apenas números positivos.' });
+          return;
+        }
+
+        await client.db.updateGuildDb(interaction.guildId, (db2) => {
+          db2.goal.campaignName = campaignName;
+          db2.goal.target = target;
+          if (db2.goal.current > target) db2.goal.current = target;
+        });
+        await ensureGoalMessage({ client, guildId: interaction.guildId }).catch(() => {});
+        await sendGuildLog({
+          client,
+          guildId: interaction.guildId,
+          title: 'Meta configurada',
+          user: interaction.user,
+          accent: 'warning',
+          fields: [
+            { name: 'Campanha', value: campaignName || '—', inline: true },
+            { name: 'Meta', value: `$${target.toLocaleString('pt-BR')}`, inline: true }
+          ]
+        });
+
+        const db2 = client.db.readGuildDb(interaction.guildId);
+        await interaction.editReply({ embeds: [renderMetaEmbed(db2)] });
+        return;
+      } catch (err) {
+        client.logger.warn('meta.config.failed', { guildId: interaction.guildId, message: err?.message, stack: err?.stack });
+        await interaction.editReply({ content: 'Falha ao configurar meta.' });
         return;
       }
-
-      await client.db.updateGuildDb(interaction.guildId, (db2) => {
-        db2.goal.campaignName = campaignName;
-        db2.goal.target = target;
-        if (db2.goal.current > target) db2.goal.current = target;
-      });
-      await ensureGoalMessage({ client, guildId: interaction.guildId }).catch(() => {});
-      await sendGuildLog({
-        client,
-        guildId: interaction.guildId,
-        title: 'Meta configurada',
-        user: interaction.user,
-        accent: 'warning',
-        fields: [
-          { name: 'Campanha', value: campaignName || '—', inline: true },
-          { name: 'Meta', value: `$${target.toLocaleString('pt-BR')}`, inline: true }
-        ]
-      });
-
-      const db2 = client.db.readGuildDb(interaction.guildId);
-      await interaction.editReply({ embeds: [renderMetaEmbed(db2)] });
-      return;
     }
 
     return safeReply(interaction, { ephemeral: true, content: 'Ação não reconhecida.' });
   }
 };
-

@@ -13,10 +13,12 @@ function createDefaultGuildDb() {
     updatedAt: new Date().toISOString(),
     config: {
       logChannelId: '',
-      farmLogChannelId: '',
-      proofChannelId: '',
+      purchaseLogChannelId: '',
+      salesLogChannelId: '',
+      financeChannelId: '',
+      chestChannelId: '',
       registrationChannelId: '',
-      registrationEnabled: false,
+      proofChannelId: '',
       registryChannelId: '',
       rankingChannelId: '',
       goalChannelId: '',
@@ -24,13 +26,27 @@ function createDefaultGuildDb() {
         master: '',
         admin: ''
       },
+      roleIds: {
+        leader: '',
+        administration: '',
+        management: '',
+        member: '',
+        recruiter: ''
+      },
       statsMessageId: '',
       weeklyResetEnabled: true,
       lastWeeklyResetAt: '',
       memberRoleId: '',
       approverRoleId: '',
+      metaEnabled: true,
+      donationEnabled: true,
+      rankingEnabled: true,
+      registrationEnabled: true,
       logsEnabled: true,
-      dmEnabled: true
+      dmEnabled: true,
+      washPercentage: 75,
+      salePercentage: 30,
+      factionBalance: 0
     },
     items: [],
     members: [],
@@ -53,6 +69,12 @@ function createDefaultGuildDb() {
       goalMessageId: '',
       contributionsByUserId: {},
       contributions: []
+    },
+    purchases: {
+      records: []
+    },
+    sales: {
+      records: []
     },
     washes: {
       records: [],
@@ -79,6 +101,10 @@ function normalizeGuildDb(db) {
       adminRoleIds: {
         ...defaults.config.adminRoleIds,
         ...(source.config?.adminRoleIds ?? {})
+      },
+      roleIds: {
+        ...defaults.config.roleIds,
+        ...(source.config?.roleIds ?? {})
       }
     },
     chest: {
@@ -97,6 +123,14 @@ function normalizeGuildDb(db) {
       ...defaults.goal,
       ...(source.goal ?? {})
     },
+    purchases: {
+      ...defaults.purchases,
+      ...(source.purchases ?? {})
+    },
+    sales: {
+      ...defaults.sales,
+      ...(source.sales ?? {})
+    },
     washes: {
       ...defaults.washes,
       ...(source.washes ?? {})
@@ -114,6 +148,31 @@ function normalizeGuildDb(db) {
   if (!normalized.config.proofChannelId && normalized.config.registryChannelId) {
     normalized.config.proofChannelId = normalized.config.registryChannelId;
   }
+
+  if (!normalized.config.financeChannelId && normalized.config.farmLogChannelId) {
+    normalized.config.financeChannelId = normalized.config.farmLogChannelId;
+  }
+
+  if (!normalized.config.chestChannelId && normalized.config.registryChannelId) {
+    normalized.config.chestChannelId = normalized.config.registryChannelId;
+  }
+
+  if (!normalized.config.roleIds.leader && normalized.config.adminRoleIds.master) {
+    normalized.config.roleIds.leader = normalized.config.adminRoleIds.master;
+  }
+  if (!normalized.config.roleIds.administration && normalized.config.adminRoleIds.admin) {
+    normalized.config.roleIds.administration = normalized.config.adminRoleIds.admin;
+  }
+  if (!normalized.config.roleIds.member && normalized.config.memberRoleId) {
+    normalized.config.roleIds.member = normalized.config.memberRoleId;
+  }
+  if (!normalized.config.roleIds.recruiter && normalized.config.approverRoleId) {
+    normalized.config.roleIds.recruiter = normalized.config.approverRoleId;
+  }
+
+  normalized.config.washPercentage = Math.max(1, Math.min(100, Number(normalized.config.washPercentage ?? 75) || 75));
+  normalized.config.salePercentage = Math.max(1, Math.min(100, Number(normalized.config.salePercentage ?? 30) || 30));
+  normalized.config.factionBalance = Math.max(0, Number(normalized.config.factionBalance ?? 0) || 0);
 
   return normalized;
 }

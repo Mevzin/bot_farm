@@ -6,7 +6,7 @@ const { createCustomId } = require('../utils/customId');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 function resolvePrintChannelId(db, fallbackChannelId) {
-  return db?.config?.registryChannelId || fallbackChannelId || '';
+  return db?.config?.proofChannelId || db?.config?.registryChannelId || fallbackChannelId || '';
 }
 
 function money(n) {
@@ -76,6 +76,15 @@ module.exports = {
             imageUrl: attachment.url
           });
           const guildDb = client.db.readGuildDb(message.guild.id);
+          if (guildDb?.config?.dmEnabled) {
+            const dmEmbed = infoEmbed({
+              title: 'Saldo atualizado',
+              description:
+                `Total sujo atual: **$${money(result.totals?.dirtyTotal ?? 0)}**\n` +
+                `Previsão limpa atual (75%): **$${money(Math.floor(Number(result.totals?.dirtyTotal ?? 0) * 0.75))}**`
+            });
+            await message.author.send({ embeds: [dmEmbed] }).catch(() => { });
+          }
           const goal = guildDb.goal;
           const canOfferDonate = Number(goal?.target ?? 0) > 0 && Number(goal?.current ?? 0) < Number(goal?.target ?? 0);
 
@@ -84,7 +93,8 @@ module.exports = {
             description:
               `Sujo: **$${money(dirtyAdded)}**\n` +
               `Limpo (75%): **$${money(result.cleanAdded)}**\n` +
-              `Total sujo: **$${money(result.totals?.dirtyTotal ?? 0)}**`
+              `Total sujo: **$${money(result.totals?.dirtyTotal ?? 0)}**\n` +
+              `Previsão limpa atual: **$${money(Math.floor(Number(result.totals?.dirtyTotal ?? 0) * 0.75))}**`
           });
 
           if (!canOfferDonate) {

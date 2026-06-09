@@ -17,6 +17,16 @@ function isMemberAdmin({ interaction, db }) {
   return false;
 }
 
+function isMemberMaster({ interaction, db }) {
+  if (!interaction.inGuild()) return false;
+  if (interaction.memberPermissions?.has('Administrator')) return true;
+  const master = db?.config?.adminRoleIds?.master || '';
+  const roles = interaction.member?.roles;
+  if (!master) return false;
+  if (!roles || !roles.cache) return false;
+  return roles.cache.has(master);
+}
+
 function isMemberApprover({ interaction, db }) {
   if (!interaction.inGuild()) return false;
   if (isMemberAdmin({ interaction, db })) return true;
@@ -28,6 +38,7 @@ function isMemberApprover({ interaction, db }) {
 }
 
 module.exports = {
+  isMemberMaster,
   isMemberAdmin,
   isMemberApprover
 };

@@ -12,7 +12,7 @@ const { createSession, getSession, clearSession } = require('../utils/sessions')
 const { commitChestMovement } = require('../utils/chest');
 
 function resolvePrintChannelId(db, fallbackChannelId) {
-  return db?.config?.registryChannelId || fallbackChannelId || '';
+  return db?.config?.proofChannelId || db?.config?.registryChannelId || fallbackChannelId || '';
 }
 
 function summarizeItems(db, items) {

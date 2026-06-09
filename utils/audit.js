@@ -1,8 +1,8 @@
 const { logEmbed } = require('./embedBuilder');
 
-async function sendGuildLog({ client, guildId, title, user, fields, imageUrl, status, accent, description }) {
+async function sendGuildLog({ client, guildId, title, user, fields, imageUrl, status, accent, description, channelId }) {
   const db = client.db.readGuildDb(guildId);
-  const logChannelId = db?.config?.logChannelId;
+  const logChannelId = channelId || db?.config?.logChannelId;
   const enabled = db?.config?.logsEnabled !== false;
 
   const embed = logEmbed({ title, user, fields, imageUrl, status, accent, description });

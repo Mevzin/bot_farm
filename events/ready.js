@@ -3,16 +3,19 @@ const path = require('node:path');
 
 const { refreshStatsMessage, weeklyResetRanking } = require('../utils/stats');
 const { ensureGoalMessage } = require('../utils/goal');
+const { version } = require('../package.json');
 
 module.exports = {
   name: Events.ClientReady,
   once: true,
   async execute(client) {
     client.logger.info('bot.ready', { user: client.user?.tag });
+    const isProd = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+    const versionLabel = isProd ? version : `${version} - dev`;
     client.user.setPresence({
       activities: [
         {
-          name: 'Criado por Github/Mevzin',
+          name: `Criado por Github/Mevzin | Powered v${versionLabel}`,
           type: ActivityType.Playing
         }
       ],

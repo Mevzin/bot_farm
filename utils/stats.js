@@ -28,7 +28,7 @@ function renderStatsEmbed(db) {
   const entries = Object.entries(totals).map(([userId, v]) => ({
     userId,
     dirty: Number(v?.dirtyTotal ?? 0),
-    clean: Number(v?.cleanTotal ?? 0)
+    clean: Math.floor(Number(v?.dirtyTotal ?? 0) * 0.75)
   }));
 
   entries.sort((a, b) => b.dirty - a.dirty);

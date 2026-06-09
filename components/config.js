@@ -7,10 +7,44 @@ const {
   ButtonStyle
 } = require('discord.js');
 
-const { isMemberAdmin } = require('../utils/permissions');
+const { isMemberMaster } = require('../utils/permissions');
 const { sendGuildLog } = require('../utils/audit');
 const { refreshStatsMessage } = require('../utils/stats');
-const { renderConfigEmbed } = require('../commands/configurar');
+const { ensureGoalMessage } = require('../utils/goal');
+const { renderConfigEmbed, renderConfigRows } = require('../commands/configurar');
+const { errorEmbed } = require('../utils/embedBuilder');
+
+const CHANNEL_FIELD_BY_ACTION = {
+  logs: 'logChannelId',
+  farmlog: 'farmLogChannelId',
+  proof: 'proofChannelId',
+  registration: 'registrationChannelId',
+  ranking: 'rankingChannelId',
+  goal: 'goalChannelId'
+};
+
+const CHANNEL_LABEL_BY_ACTION = {
+  logs: 'Logs',
+  farmlog: 'Log Farm',
+  proof: 'Prints',
+  registration: 'Cadastro',
+  ranking: 'Ranking',
+  goal: 'Meta'
+};
+
+const ROLE_FIELD_BY_ACTION = {
+  master: ['adminRoleIds', 'master'],
+  admin: ['adminRoleIds', 'admin'],
+  member: ['memberRoleId'],
+  approver: ['approverRoleId']
+};
+
+const ROLE_LABEL_BY_ACTION = {
+  master: 'Cargo Master',
+  admin: 'Cargo Admin',
+  member: 'Cargo Membro',
+  approver: 'Cargo Aprovador'
+};
 
 function backRow() {
   return new ActionRowBuilder().addComponents(
@@ -19,74 +53,48 @@ function backRow() {
   );
 }
 
+function writeNestedConfigValue(config, fieldPath, value) {
+  if (fieldPath.length === 2) {
+    if (!config[fieldPath[0]]) config[fieldPath[0]] = {};
+    config[fieldPath[0]][fieldPath[1]] = value;
+    return;
+  }
+  config[fieldPath[0]] = value;
+}
+
 module.exports = {
   customIdPrefix: 'cfg',
   async execute(interaction, { client, safeReply }) {
     if (!interaction.inGuild()) return;
     const db = client.db.readGuildDb(interaction.guildId);
-    if (!isMemberAdmin({ interaction, db })) {
-      return safeReply(interaction, { ephemeral: true, content: 'Sem permissão.' });
+    if (!isMemberMaster({ interaction, db })) {
+      return safeReply(interaction, { ephemeral: true, content: 'Somente o cargo Master pode usar esta configuração.' });
     }
 
-    const [prefix, action, extra] = String(interaction.customId).split(':');
+    const [, action, extra] = String(interaction.customId).split(':');
 
     if (interaction.isButton()) {
       if (action === 'close') {
         return interaction.update({ content: 'Painel fechado.', embeds: [], components: [] });
       }
       if (action === 'back') {
-        const cfgCmd = client.commands.get('configurar');
         const db2 = client.db.readGuildDb(interaction.guildId);
-        const row1 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('cfg:logs').setLabel('Canal de Logs').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder()
-            .setCustomId('cfg:registry')
-            .setLabel('Canal de Registro')
-            .setStyle(ButtonStyle.Primary),
-          new ButtonBuilder()
-            .setCustomId('cfg:ranking')
-            .setLabel('Canal de Ranking')
-            .setStyle(ButtonStyle.Primary)
-        );
-        const row2 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('cfg:goal').setLabel('Canal da Meta').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId('cfg:weekly').setLabel('Reset Semanal').setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId('cfg:roles').setLabel('Cargos Admin').setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId('cfg:close').setLabel('Fechar').setStyle(ButtonStyle.Danger)
-        );
-        const row3 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('cfg:access').setLabel('Cargos Acesso').setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId('cfg:dm').setLabel('DM Auto').setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId('cfg:logsToggle').setLabel('Logs').setStyle(ButtonStyle.Secondary)
-        );
-        return interaction.update({ embeds: [cfgCmd.renderConfigEmbed(db2)], components: [row1, row2, row3], content: '' });
+        return interaction.update({ embeds: [renderConfigEmbed(db2)], components: renderConfigRows(db2), content: '' });
       }
 
-      if (action === 'logs' || action === 'registry' || action === 'ranking' || action === 'goal') {
-        const key =
-          action === 'logs'
-            ? 'logChannelId'
-            : action === 'registry'
-              ? 'registryChannelId'
-              : action === 'ranking'
-                ? 'rankingChannelId'
-                : 'goalChannelId';
+      if (action === 'channel') {
+        const targetAction = extra;
+        const key = CHANNEL_FIELD_BY_ACTION[targetAction];
+        if (!key) return;
         const select = new ChannelSelectMenuBuilder()
-          .setCustomId(`cfg:set:${key}`)
+          .setCustomId(`cfg:setChannel:${key}`)
           .setPlaceholder('Selecione um canal')
           .addChannelTypes(ChannelType.GuildText);
 
         return interaction.update({
           embeds: [
             renderConfigEmbed(db).setDescription(
-              `Selecione o canal para **${action === 'logs'
-                ? 'Logs'
-                : action === 'registry'
-                  ? 'Registro'
-                  : action === 'ranking'
-                    ? 'Ranking'
-                    : 'Meta'
-              }**.`
+              `Selecione o canal para **${CHANNEL_LABEL_BY_ACTION[targetAction]}**.`
             )
           ],
           components: [new ActionRowBuilder().addComponents(select), backRow()],
@@ -94,25 +102,19 @@ module.exports = {
         });
       }
 
-      if (action === 'roles') {
-        const select = new RoleSelectMenuBuilder().setCustomId('cfg:set:roles').setPlaceholder('Selecione 1 ou 2 cargos');
+      if (action === 'role') {
+        const targetAction = extra;
+        const roleField = ROLE_FIELD_BY_ACTION[targetAction];
+        if (!roleField) return;
+        const select = new RoleSelectMenuBuilder().setCustomId(`cfg:setRole:${targetAction}`).setPlaceholder('Selecione um cargo');
         return interaction.update({
-          embeds: [renderConfigEmbed(db).setDescription('Selecione os cargos administrativos (Master e Admin).')],
+          embeds: [renderConfigEmbed(db).setDescription(`Selecione o **${ROLE_LABEL_BY_ACTION[targetAction]}**.`)],
           components: [new ActionRowBuilder().addComponents(select), backRow()],
           content: ''
         });
       }
 
-      if (action === 'access') {
-        const select = new RoleSelectMenuBuilder().setCustomId('cfg:set:access').setPlaceholder('Selecione 1 ou 2 cargos');
-        return interaction.update({
-          embeds: [renderConfigEmbed(db).setDescription('Selecione cargos: Membro e Aprovador (opcional).')],
-          components: [new ActionRowBuilder().addComponents(select), backRow()],
-          content: ''
-        });
-      }
-
-      if (action === 'weekly') {
+      if (action === 'toggle' && extra === 'weekly') {
         await interaction.deferUpdate();
         await client.db.updateGuildDb(interaction.guildId, (db2) => {
           db2.config.weeklyResetEnabled = !db2.config.weeklyResetEnabled;
@@ -132,11 +134,11 @@ module.exports = {
           ]
         });
         const db3 = client.db.readGuildDb(interaction.guildId);
-        await interaction.message.edit({ embeds: [renderConfigEmbed(db3)], components: interaction.message.components, content: 'Salvo.' });
+        await interaction.message.edit({ embeds: [renderConfigEmbed(db3)], components: renderConfigRows(db3), content: 'Salvo.' });
         return;
       }
 
-      if (action === 'dm') {
+      if (action === 'toggle' && extra === 'dm') {
         await interaction.deferUpdate();
         await client.db.updateGuildDb(interaction.guildId, (db2) => {
           db2.config.dmEnabled = !db2.config.dmEnabled;
@@ -151,11 +153,11 @@ module.exports = {
           fields: [{ name: 'Status', value: enabled ? 'Ativa' : 'Desativada', inline: true }]
         });
         const db3 = client.db.readGuildDb(interaction.guildId);
-        await interaction.message.edit({ embeds: [renderConfigEmbed(db3)], components: interaction.message.components, content: 'Salvo.' });
+        await interaction.message.edit({ embeds: [renderConfigEmbed(db3)], components: renderConfigRows(db3), content: 'Salvo.' });
         return;
       }
 
-      if (action === 'logsToggle') {
+      if (action === 'toggle' && extra === 'logs') {
         await interaction.deferUpdate();
         await client.db.updateGuildDb(interaction.guildId, (db2) => {
           db2.config.logsEnabled = !db2.config.logsEnabled;
@@ -170,13 +172,20 @@ module.exports = {
           fields: [{ name: 'Status', value: enabled ? 'Ativo' : 'Desativado', inline: true }]
         });
         const db3 = client.db.readGuildDb(interaction.guildId);
-        await interaction.message.edit({ embeds: [renderConfigEmbed(db3)], components: interaction.message.components, content: 'Salvo.' });
+        await interaction.message.edit({ embeds: [renderConfigEmbed(db3)], components: renderConfigRows(db3), content: 'Salvo.' });
         return;
+      }
+
+      if (action === 'toggle' && extra === 'registration') {
+        return safeReply(interaction, {
+          ephemeral: true,
+          embeds: [errorEmbed({ description: 'Essa opção ainda não está pronta.' })]
+        });
       }
     }
 
     if (interaction.isChannelSelectMenu()) {
-      if (action !== 'set') return;
+      if (action !== 'setChannel') return;
       await interaction.deferUpdate();
       const key = extra;
       const selected = interaction.values?.[0] ?? '';
@@ -199,7 +208,6 @@ module.exports = {
         await refreshStatsMessage({ client, guildId: interaction.guildId }).catch(() => { });
       }
       if (key === 'goalChannelId') {
-        const { ensureGoalMessage } = require('../utils/goal');
         await ensureGoalMessage({ client, guildId: interaction.guildId }).catch(() => { });
       }
 
@@ -213,50 +221,27 @@ module.exports = {
     }
 
     if (interaction.isRoleSelectMenu()) {
-      if (action !== 'set') return;
+      if (action !== 'setRole') return;
       await interaction.deferUpdate();
-      const selected = interaction.values ?? [];
+      const selected = interaction.values?.[0] ?? '';
+      const roleField = ROLE_FIELD_BY_ACTION[extra];
+      if (!roleField) return;
 
-      if (extra === 'roles') {
-        const master = selected[0] ?? '';
-        const admin = selected[1] ?? selected[0] ?? '';
+      await client.db.updateGuildDb(interaction.guildId, (db2) => {
+        writeNestedConfigValue(db2.config, roleField, selected);
+      });
 
-        await client.db.updateGuildDb(interaction.guildId, (db2) => {
-          db2.config.adminRoleIds.master = master;
-          db2.config.adminRoleIds.admin = admin;
-        });
-
-        await sendGuildLog({
-          client,
-          guildId: interaction.guildId,
-          title: 'Cargos administrativos atualizados',
-          user: interaction.user,
-          fields: [
-            { name: 'Master', value: master ? `<@&${master}>` : 'Nenhum', inline: true },
-            { name: 'Admin', value: admin ? `<@&${admin}>` : 'Nenhum', inline: true }
-          ]
-        });
-      }
-
-      if (extra === 'access') {
-        const memberRoleId = selected[0] ?? '';
-        const approverRoleId = selected[1] ?? '';
-        await client.db.updateGuildDb(interaction.guildId, (db2) => {
-          db2.config.memberRoleId = memberRoleId;
-          db2.config.approverRoleId = approverRoleId;
-        });
-        await sendGuildLog({
-          client,
-          guildId: interaction.guildId,
-          title: 'Cargos de acesso atualizados',
-          user: interaction.user,
-          accent: 'warning',
-          fields: [
-            { name: 'Membro', value: memberRoleId ? `<@&${memberRoleId}>` : 'Nenhum', inline: true },
-            { name: 'Aprovador', value: approverRoleId ? `<@&${approverRoleId}>` : 'Nenhum', inline: true }
-          ]
-        });
-      }
+      await sendGuildLog({
+        client,
+        guildId: interaction.guildId,
+        title: 'Cargo atualizado',
+        user: interaction.user,
+        accent: 'warning',
+        fields: [
+          { name: 'Campo', value: ROLE_LABEL_BY_ACTION[extra], inline: true },
+          { name: 'Cargo', value: selected ? `<@&${selected}>` : 'Nenhum', inline: true }
+        ]
+      });
 
       const db3 = client.db.readGuildDb(interaction.guildId);
       await interaction.message.edit({ embeds: [renderConfigEmbed(db3)], components: interaction.message.components, content: 'Salvo.' });

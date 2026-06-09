@@ -27,8 +27,6 @@ module.exports = {
       return safeReply(interaction, { ephemeral: true, embeds: [errorEmbed({ description: `Aguarde ${cooldown}s para usar novamente.` })] });
     }
 
-    await interaction.deferReply({ ephemeral: true });
-
     const candidate = interaction.options.getUser('discord', true);
     const data = {
       candidateId: candidate.id,
@@ -41,11 +39,12 @@ module.exports = {
     };
 
     const db = client.db.readGuildDb(interaction.guildId);
-    const channelId = db?.config?.registryChannelId || interaction.channelId;
-    const channel = await client.channels.fetch(channelId).catch(() => null);
-    if (!channel || !channel.isTextBased()) {
-      await interaction.editReply({ embeds: [errorEmbed({ description: 'Canal de registro inválido.' })] });
-      return;
+    const channelId = db?.config?.registrationChannelId || '';
+    if (!channelId) {
+      return safeReply(interaction, {
+        ephemeral: true,
+        embeds: [errorEmbed({ description: 'Canal exclusivo de cadastro não configurado ou inválido.' })]
+      });
     }
 
     const regId = `reg_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
@@ -54,18 +53,68 @@ module.exports = {
       db2.registrations.pending[regId] = data;
     });
 
+    await safeReply(interaction, {
+      ephemeral: true,
+      embeds: [successEmbed({ description: 'Registro efetuado com sucesso, aguarde ser aprovado.' })]
+    });
+
     const { buildRegistrationMessage } = require('../utils/registration');
     const payload = buildRegistrationMessage({ guildId: interaction.guildId, regId, data, candidate });
-    const sent = await channel.send(payload);
 
-    await client.db.updateGuildDb(interaction.guildId, (db2) => {
-      if (db2.registrations?.pending?.[regId]) db2.registrations.pending[regId].messageId = sent.id;
-      if (db2.registrations?.pending?.[regId]) db2.registrations.pending[regId].channelId = channel.id;
-    });
+    const configured = await client.channels.fetch(channelId).catch(() => null);
+    const configuredOk =
+      configured &&
+      configured.isTextBased() &&
+      String(configured.guildId || '') === String(interaction.guildId);
 
-    await interaction.editReply({
-      embeds: [successEmbed({ title: 'Registro enviado', description: `Solicitação enviada no canal <#${channel.id}>.` })]
-    });
+    const fallback = interaction.channel;
+    const fallbackOk = fallback && fallback.isTextBased();
+
+    const targetChannel = configuredOk ? configured : fallbackOk ? fallback : null;
+    if (!targetChannel) {
+      await client.db.updateGuildDb(interaction.guildId, (db2) => {
+        if (db2.registrations?.pending?.[regId]) delete db2.registrations.pending[regId];
+      });
+      await safeReply(interaction, {
+        ephemeral: true,
+        embeds: [errorEmbed({ description: 'Não foi possível encontrar um canal válido para enviar o card de registro.' })]
+      }).catch(() => {});
+      return;
+    }
+
+    try {
+      const sent = await targetChannel.send(payload);
+      await client.db.updateGuildDb(interaction.guildId, (db2) => {
+        if (db2.registrations?.pending?.[regId]) db2.registrations.pending[regId].messageId = sent.id;
+        if (db2.registrations?.pending?.[regId]) db2.registrations.pending[regId].channelId = targetChannel.id;
+      });
+
+      await safeReply(interaction, {
+        ephemeral: true,
+        embeds: [successEmbed({ description: `Card enviado para aprovação em <#${targetChannel.id}>.` })]
+      }).catch(() => {});
+    } catch (err) {
+      const isMissingPerm = err?.code === 50013;
+      const reason = isMissingPerm
+        ? 'Sem permissão para enviar mensagens/embeds/botões no canal.'
+        : 'Erro ao enviar mensagem no canal.';
+
+      await client.db.updateGuildDb(interaction.guildId, (db2) => {
+        if (db2.registrations?.pending?.[regId]) delete db2.registrations.pending[regId];
+      });
+
+      client.logger.warn('registration.send.failed', {
+        guildId: interaction.guildId,
+        regId,
+        channelId: targetChannel.id,
+        message: err?.message,
+        code: err?.code ?? null
+      });
+
+      await safeReply(interaction, {
+        ephemeral: true,
+        embeds: [errorEmbed({ description: `${reason} Ajuste as permissões do bot e tente novamente.` })]
+      }).catch(() => {});
+    }
   }
 };
-

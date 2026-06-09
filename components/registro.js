@@ -9,6 +9,14 @@ function safeDm(user, payload) {
   return user.send(payload).catch(() => null);
 }
 
+function formatApprovedNickname({ cityId, nick, fallbackName }) {
+  const city = String(cityId || '').trim();
+  const vulgo = String(nick || '').trim() || String(fallbackName || '').trim();
+  const raw = `(${city} | ${vulgo})`;
+  if (raw.length <= 32) return raw;
+  return raw.slice(0, 32);
+}
+
 async function applyApproval({ interaction, client, regId, candidateId, data }) {
   const db = client.db.readGuildDb(interaction.guildId);
   const memberRoleId = db?.config?.memberRoleId || '';
@@ -20,10 +28,8 @@ async function applyApproval({ interaction, client, regId, candidateId, data }) 
     return;
   }
 
-  const nickname = data.nick || data.name;
-  if (nickname) {
-    await member.setNickname(nickname).catch(() => null);
-  }
+  const nickname = formatApprovedNickname({ cityId: data.cityId, nick: data.nick, fallbackName: data.name });
+  await member.setNickname(nickname).catch(() => null);
   if (memberRoleId) {
     await member.roles.add(memberRoleId).catch(() => null);
   }
@@ -70,7 +76,9 @@ async function applyApproval({ interaction, client, regId, candidateId, data }) 
         fields: [
           { name: 'Usuário', value: `<@${candidateId}>`, inline: true },
           { name: 'Nome', value: data.name, inline: true },
-          { name: 'Vulgo', value: data.nick, inline: true }
+          { name: 'Vulgo', value: data.nick, inline: true },
+          { name: 'ID Cidade', value: data.cityId, inline: true },
+          { name: 'Nickname definido', value: nickname, inline: false }
         ]
       })
     ],

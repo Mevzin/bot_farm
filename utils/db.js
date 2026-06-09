@@ -13,6 +13,10 @@ function createDefaultGuildDb() {
     updatedAt: new Date().toISOString(),
     config: {
       logChannelId: '',
+      farmLogChannelId: '',
+      proofChannelId: '',
+      registrationChannelId: '',
+      registrationEnabled: false,
       registryChannelId: '',
       rankingChannelId: '',
       goalChannelId: '',
@@ -63,6 +67,57 @@ function createDefaultGuildDb() {
   };
 }
 
+function normalizeGuildDb(db) {
+  const defaults = createDefaultGuildDb();
+  const source = db && typeof db === 'object' ? db : {};
+  const normalized = {
+    ...defaults,
+    ...source,
+    config: {
+      ...defaults.config,
+      ...(source.config ?? {}),
+      adminRoleIds: {
+        ...defaults.config.adminRoleIds,
+        ...(source.config?.adminRoleIds ?? {})
+      }
+    },
+    chest: {
+      ...defaults.chest,
+      ...(source.chest ?? {})
+    },
+    dirtyMoney: {
+      ...defaults.dirtyMoney,
+      ...(source.dirtyMoney ?? {})
+    },
+    farm: {
+      ...defaults.farm,
+      ...(source.farm ?? {})
+    },
+    goal: {
+      ...defaults.goal,
+      ...(source.goal ?? {})
+    },
+    washes: {
+      ...defaults.washes,
+      ...(source.washes ?? {})
+    },
+    registrations: {
+      ...defaults.registrations,
+      ...(source.registrations ?? {})
+    },
+    stats: {
+      ...defaults.stats,
+      ...(source.stats ?? {})
+    }
+  };
+
+  if (!normalized.config.proofChannelId && normalized.config.registryChannelId) {
+    normalized.config.proofChannelId = normalized.config.registryChannelId;
+  }
+
+  return normalized;
+}
+
 function createDb({ baseDir, logger }) {
   const guildsDir = path.join(baseDir, 'database', 'guilds');
   ensureDir(guildsDir);
@@ -79,13 +134,13 @@ function createDb({ baseDir, logger }) {
     if (cached) return cached;
     const filePath = getGuildFilePath({ baseDir, guildId });
     if (!fs.existsSync(filePath)) {
-      const initial = createDefaultGuildDb();
+      const initial = normalizeGuildDb(createDefaultGuildDb());
       safeWriteFileSync(filePath, JSON.stringify(initial, null, 2));
       cache.set(guildId, initial);
       return initial;
     }
     const raw = fs.readFileSync(filePath, 'utf8');
-    const parsed = JSON.parse(raw);
+    const parsed = normalizeGuildDb(JSON.parse(raw));
     cache.set(guildId, parsed);
     return parsed;
   }
@@ -136,4 +191,4 @@ function createDb({ baseDir, logger }) {
   };
 }
 
-module.exports = { createDb, createDefaultGuildDb };
+module.exports = { createDb, createDefaultGuildDb, normalizeGuildDb };

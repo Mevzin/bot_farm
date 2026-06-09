@@ -57,6 +57,24 @@ async function commitDirtyMoney({ client, guildId, user, dirtyAdded, imageUrl })
     imageUrl: imageUrl || undefined
   });
 
+  const cfg = client.db.readGuildDb(guildId)?.config ?? {};
+  if (cfg.farmLogChannelId && cfg.farmLogChannelId !== cfg.logChannelId) {
+    await sendGuildLog({
+      client,
+      guildId,
+      channelId: cfg.farmLogChannelId,
+      title: 'Log Farm - Dinheiro sujo registrado',
+      user,
+      fields: [
+        { name: 'Valor adicionado (sujo)', value: `**${dirtyAdded.toLocaleString('pt-BR')}**`, inline: true },
+        { name: 'Valor após lavagem (limpo)', value: `**${Math.floor(dirtyAdded * 0.75).toLocaleString('pt-BR')}**`, inline: true },
+        { name: 'Total (sujo)', value: `**${totals.dirtyTotal.toLocaleString('pt-BR')}**`, inline: true },
+        { name: 'Total (limpo)', value: `**${totals.cleanTotal.toLocaleString('pt-BR')}**`, inline: true }
+      ],
+      imageUrl: imageUrl || undefined
+    });
+  }
+
   return { cleanAdded, totals };
 }
 

@@ -41,7 +41,7 @@ function renderGoalEmbed(goal) {
 
 async function ensureGoalMessage({ client, guildId }) {
   const db = client.db.readGuildDb(guildId);
-  const channelId = db?.config?.goalChannelId || db?.config?.registryChannelId || '';
+  const channelId = db?.config?.goalChannelId || '';
   if (!channelId) return null;
 
   const channel = await client.channels.fetch(channelId).catch(() => null);
@@ -102,4 +102,3 @@ module.exports = {
   ensureGoalMessage,
   snapshotGoalIfDone
 };
-
